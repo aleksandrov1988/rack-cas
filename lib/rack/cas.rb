@@ -82,7 +82,7 @@ class Rack::CAS
       extra_attrs = extra_attrs.select { |key, val| filter.include? key }
     end
 
-    request.session['cas'] = { 'user' => user, 'ticket' => ticket, 'extra_attributes' => extra_attrs }
+    request.session['cas'] = { 'user' => user, 'ticket' => ticket, 'extra_attributes' => extra_attrs, 'last_validated_at' => Time.now}
   end
 
   def redirect_to(url, status=302)

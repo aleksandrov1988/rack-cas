@@ -92,6 +92,8 @@ class Rack::CAS
   def log(env, message, level = :info)
     if env['rack.logger']
       env['rack.logger'].send(level, message)
+    elsif env['action_dispatch.logger']
+      env['action_dispatch.logger'].send(level, message)
     else
       env['rack.errors'].write(message)
     end

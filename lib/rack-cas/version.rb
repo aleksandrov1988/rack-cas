@@ -1,3 +1,3 @@
 module RackCAS
-  VERSION = '0.9.23'
+  VERSION = '0.9.231'
 end

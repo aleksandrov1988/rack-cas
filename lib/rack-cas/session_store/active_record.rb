@@ -27,6 +27,8 @@ module RackCAS
       [sid, data]
     end
 
+    alias :find_session :get_session
+
     def set_session(env, sid, session_data, options)
       cas_ticket = (session_data['cas']['ticket'] unless session_data['cas'].nil?)
 
@@ -41,6 +43,8 @@ module RackCAS
 
       success ? session.session_id : false
     end
+
+    alias :write_session :set_session
 
     def destroy_session(env, sid, options)
       Session.where(session_id: sid).delete_all

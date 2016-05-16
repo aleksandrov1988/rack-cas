@@ -8,30 +8,22 @@ class Rack::CAS
 
   def initialize(app, config={})
     @app = app
-    @server_url = config.delete(:server_url)
-    @session_store = config.delete(:session_store)
-    @config = config || {}
 
-    raise ArgumentError, 'server_url is required' if @server_url.nil?
-    if @session_store && !@session_store.respond_to?(:destroy_session_by_cas_ticket)
-      raise ArgumentError, 'session_store does not support single-sign-out'
-    end
+    RackCAS.config.update config
   end
 
   def call(env)
     request = Rack::Request.new(env)
     cas_request = CASRequest.new(request)
 
-    if cas_request.path_matches? @config[:exclude_paths] || @config[:exclude_path]
-      return @app.call(env)
-    end
+    return @app.call(env) if exclude_request?(cas_request)
 
     if cas_request.ticket_validation?
       log env, 'rack-cas: Intercepting ticket validation request.'
 
       begin
         user, extra_attrs = get_user(request.url, cas_request.ticket)
-      rescue RackCAS::ServiceValidationResponse::TicketInvalidError
+      rescue RackCAS::ServiceValidationResponse::TicketInvalidError, RackCAS::SAMLValidationResponse::TicketInvalidError
         log env, 'rack-cas: Invalid ticket. Redirecting to CAS login.'
 
         return redirect_to server.login_url(cas_request.service_url).to_s
@@ -44,20 +36,20 @@ class Rack::CAS
     if cas_request.logout?
       log env, 'rack-cas: Intercepting logout request.'
 
-      request.session.clear
+      request.session.send (request.session.respond_to?(:destroy) ? :destroy : :clear)
       return redirect_to server.logout_url(request.params).to_s
     end
 
-    if cas_request.single_sign_out? && @session_store
+    if cas_request.single_sign_out? && RackCAS.config.session_store?
       log env, 'rack-cas: Intercepting single-sign-out request.'
 
-      @session_store.destroy_session_by_cas_ticket(cas_request.ticket)
+      RackCAS.config.session_store.destroy_session_by_cas_ticket(cas_request.ticket)
       return [200, {'Content-Type' => 'text/plain'}, ['CAS Single-Sign-Out request intercepted.']]
     end
 
     response = @app.call(env)
 
-    if response[0] == 401 # access denied
+    if response[0] == 401 && !ignore_intercept?(request) # access denied
       log env, 'rack-cas: Intercepting 401 access denied response. Redirecting to CAS login.'
 
       redirect_to server.login_url(request.url).to_s
@@ -69,7 +61,20 @@ class Rack::CAS
   protected
 
   def server
-    @server ||= RackCAS::Server.new(@server_url)
+    @server ||= RackCAS::Server.new(RackCAS.config.server_url)
+  end
+
+  def ignore_intercept?(request)
+    return false if (validator = RackCAS.config.ignore_intercept_validator).nil?
+    validator.call(request)
+  end
+
+  def exclude_request?(cas_request)
+    if (validator = RackCAS.config.exclude_request_validator)
+      validator.call(cas_request.request)
+    else
+      cas_request.path_matches? RackCAS.config.exclude_path || RackCAS.config.exclude_paths
+    end
   end
 
   def get_user(service_url, ticket)
@@ -77,9 +82,8 @@ class Rack::CAS
   end
 
   def store_session(request, user, ticket, extra_attrs = {})
-    if @config[:extra_attributes_filter]
-      filter = Array(@config[:extra_attributes_filter]).map(&:to_s)
-      extra_attrs = extra_attrs.select { |key, val| filter.include? key }
+    if RackCAS.config.extra_attributes_filter?
+      extra_attrs.select! { |key, val| RackCAS.config.extra_attributes_filter.map(&:to_s).include? key.to_s }
     end
 
     request.session['cas'] = { 'user' => user, 'ticket' => ticket, 'extra_attributes' => extra_attrs, 'last_validated_at' => Time.now}

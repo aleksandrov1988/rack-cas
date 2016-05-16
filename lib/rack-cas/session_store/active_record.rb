@@ -15,21 +15,26 @@ module RackCAS
 
     private
 
-    def get_session(env, sid)
+    # Rack 2.0 method
+    def find_session(env, sid)
       if sid.nil?
         sid = generate_sid
         data = nil
       else
-        session = Session.where(session_id: sid).first || {}
+        unless session = Session.where(session_id: sid).first
+          session = {}
+          # force generation of new sid since there is no associated session
+          sid = generate_sid
+        end
         data = unpack(session['data'])
       end
 
       [sid, data]
     end
 
-    alias :find_session :get_session
 
-    def set_session(env, sid, session_data, options)
+    # Rack 2.0 method
+    def write_session(req, sid, session_data, options)
       cas_ticket = (session_data['cas']['ticket'] unless session_data['cas'].nil?)
 
       session = if ActiveRecord.respond_to?(:version) && ActiveRecord.version >= Gem::Version.new('4.0.0')
@@ -44,12 +49,25 @@ module RackCAS
       success ? session.session_id : false
     end
 
-    alias :write_session :set_session
 
-    def destroy_session(env, sid, options)
+    # Rack 2.0 method
+    def delete_session(req, sid, options)
       Session.where(session_id: sid).delete_all
 
       options[:drop] ? nil : generate_sid
+    end
+
+    # Rack 1.* method
+    alias get_session find_session
+
+    # Rack 1.* method
+    def set_session(env, sid, session_data, options) # rack 1.x compatibilty
+      write_session(Rack::Request.new(env), sid, session_data, options)
+    end
+
+    # Rack 1.* method
+    def destroy_session(env, sid, options) # rack 1.x compatibilty
+      delete_session(Rack::Request.new(env), sid, options)
     end
 
     def pack(data)

@@ -20,7 +20,7 @@ Requirements
 ============
 * Ruby >= 1.9.2
 * A working [CAS server](http://casino.rbcas.com)
-* An app that [returns a `401 Unauthorized`](#integration) status when authentication is requried
+* An app that [returns a `401 Unauthorized`](#integration) status when authentication is required
 
 Installation
 ============
@@ -38,7 +38,7 @@ If the the server URL depends on your environment, you can define it in the acco
 
 ### Single Logout ###
 
-If you wish to enable [single logout](http://jasig.github.io/cas/4.0.0/installation/Logout-Single-Signout.html) you'll need to modify your configuration as below.
+If you wish to enable [single logout](http://apereo.github.io/cas/4.0.x/installation/Logout-Single-Signout.html) you'll need to modify your configuration as below.
 
 #### Active Record ####
 
@@ -50,7 +50,7 @@ config.rack_cas.session_store = RackCAS::ActiveRecordStore
 Edit your `config/initializers/session_store.rb` file with the following:
 ```ruby
 require 'rack-cas/session_store/rails/active_record'
-YourApp::Application.config.session_store :rack_cas_active_record_store
+Rails.application.config.session_store ActionDispatch::Session::RackCasActiveRecordStore
 ```
 Run:
 ```ruby
@@ -67,7 +67,7 @@ config.rack_cas.session_store = RackCAS::MongoidStore
 Edit your `config/initializers/session_store.rb` file with the following:
 ```ruby
 require 'rack-cas/session_store/rails/mongoid'
-YourApp::Application.config.session_store :rack_cas_mongoid_store
+YourApp::Application.config.session_store ActionDispatch::Session::RackCasMongoidStore
 ```
 Sinatra and Other Rack-Compatible Frameworks
 --------------------------------------------
@@ -88,6 +88,15 @@ Single sign out support outside of Rails is currently untested. We'll be adding 
 Configuration
 =============
 
+Extra Attributes
+----------------
+
+You can whitelist which extra attributes to keep.
+In your `config/application.rb`:
+```ruby
+config.rack_cas.extra_attributes_filter = %w(some_attribute some_other_attribute)
+```
+
 Excluding Paths
 ---------------
 
@@ -101,6 +110,48 @@ The same options can be passed to `FakeCAS`.
 ```ruby
 use Rack::FakeCAS, exclude_path: '/api'
 ```
+
+Excluding Requests
+------------------
+
+If the path exclusion is not suitable to ignore the CAS authentication in some parts of your app, you can pass
+`exclude_request_validator` to the middleware with a custom validator. You need to pass a `Proc` object that will accept
+a `Rack::Request` object as a parameter.
+
+```ruby
+use Rack::CAS, server_url: '...', exclude_request_validator: Proc.new { |req| req.env['HTTP_CONTENT_TYPE'] == 'application/json' }
+```
+
+Ignore 401 Intercept
+--------------------
+
+For some requests you might want to ignore the 401 intercept made by the middleware. For example when we want CAS to
+authenticate API requests but leave the redirect handling to the client. For this you can use the
+`ignore_intercept_validator`. You need to pass a `Proc` object that will accept a `Rack::Request` object as a parameter.
+
+```ruby
+use Rack::CAS, server_url: '...', ignore_intercept_validator: Proc.new { |req| req.env['HTTP_CONTENT_TYPE'] == 'application/json' }
+use Rack::CAS, server_url: '...', ignore_intercept_validator: Proc.new { |req| req.env['PATH_INFO'] =~ 'api' }
+```
+
+SSL Cert Verification
+---------------------
+
+If you're working in development or staging your CAS server may not have a legit SSL cert. You can turn off SSL Cert verification by adding the following to `config/application.rb`.
+
+```ruby
+config.rack_cas.verify_ssl_cert = false
+```
+
+CAS Login Renew Flag
+--------------
+
+The CAS standard allows for a `renew=true` parameter to be passed to the CAS server which will force the user to re-login every time CAS authentication is performed, for added security. To enable this for your application, add the following to `config/application.rb`.
+
+```ruby
+config.rack_cas.renew = true
+```
+
 Integration
 ===========
 Your app should __return a [401 status](http://httpstatus.es/401)__ whenever a request is made that requires authentication. Rack-CAS will catch these responses and attempt to authenticate via your CAS server.

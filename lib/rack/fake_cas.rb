@@ -25,14 +25,18 @@ class Rack::FakeCAS
       redirect_to @request.params['service']
 
     when '/logout'
-      @request.session.clear
+      @request.session.send respond_to?(:destroy) ? :destroy : :clear
       redirect_to "#{@request.script_name}/"
+
+    # built-in way to get to the login page without needing to return a 401 status
+    when '/fake_cas_login'
+      render_login_page
 
     else
       response = @app.call(env)
 
       if response[0] == 401 # access denied
-        [ 200, { 'Content-Type' => 'text/html' }, [login_page] ]
+        render_login_page
       else
         response
       end
@@ -40,6 +44,10 @@ class Rack::FakeCAS
   end
 
   protected
+
+  def render_login_page
+    [ 200, { 'Content-Type' => 'text/html' }, [login_page] ]
+  end
 
   def login_page
     <<-EOS

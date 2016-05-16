@@ -7,6 +7,7 @@ require 'rspec'
 require 'rack'
 require 'rack/test'
 require 'webmock/rspec'
+require 'rack-cas'
 require 'rack/cas'
 require 'rack/fake_cas'
 require 'fixtures/cas_test_app'
@@ -18,6 +19,11 @@ RSpec.configure do |config|
     stub_request(:get, /serviceValidate/).to_return(
       headers: {'Content-Type' => 'text/xml'},
       body: fixture('rubycas_service_response.xml')
+    )
+
+    stub_request(:post, /samlValidate/).to_return(
+      headers: {'Content-Type' => 'text/xml'},
+      body: fixture('saml_validation_response.xml')
     )
   end
 end
